@@ -1,25 +1,47 @@
 // src/api/apiBase.js
 
-// 默认后端 API 地址（用于兜底）
-const DEFAULT_API_BASE = "http://localhost:5000";
+// 统一 API 基础地址：优先读取环境变量
+// - 本地开发：走 http://localhost:5000
+// - 部署生产：用 .env.production 里的 VITE_API_BASE
+const API_BASE =
+  import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
-// 使用环境变量（优先），否则用默认值
-export const API_BASE =
-  import.meta.env.VITE_API_BASE || DEFAULT_API_BASE;
-
-// 封装一个通用 fetch
+// 封装 fetch，默认带上 JSON 处理
 export async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path}`;
-  const response = await fetch(url, {
+
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+  };
+
+  const mergedOptions = {
+    method: "GET",
     headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
+      ...defaultHeaders,
+      ...(options.headers || {}),
     },
     ...options,
-  });
+  };
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+  try {
+    const response = await fetch(url, mergedOptions);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `HTTP ${response.status}: ${errorText || response.statusText}`
+      );
+    }
+
+    // 自动尝试解析 JSON
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      return await response.json();
+    } else {
+      return await response.text();
+    }
+  } catch (err) {
+    console.error("❌ apiFetch 出错:", err);
+    throw err;
   }
-  return response.json();
 }
